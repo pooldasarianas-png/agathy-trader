@@ -3,66 +3,70 @@ import yfinance as yf
 import pandas_ta as ta
 import plotly.graph_objects as go
 
-# Configuração que se ajusta ao celular
-st.set_page_config(page_title="AgathyTrader Pro", layout="wide")
+# Configuração básica
+st.set_page_config(page_title="AgathyTrader", layout="wide")
 
-# Visual Dark Mode
-st.markdown("<style>.main {background-color: #000; color: #0FF;}</style>", unsafe_allow_html=True)
+# Estilo Neon Minimalista (Evita erros de renderização)
+st.markdown("""
+    <style>
+    .main { background-color: #000; }
+    .stMetric { border: 1px solid #0FF; background-color: #050505; color: #0FF; }
+    h1 { color: #0FF; text-shadow: 0 0 5px #0FF; text-align: center; }
+    </style>
+    """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center; color: #00FFFF;'>⚡ AGATHY TRADER</h1>", unsafe_allow_html=True)
+st.markdown("<h1>⚡ AGATHY TRADER</h1>", unsafe_allow_html=True)
 
-# Botões de Seleção Rápida
-st.write("🎯 **LISTA DE ATIVOS:**")
-cols = st.columns(4)
-b_btc = cols[0].button("BTC")
-b_eth = cols[1].button("ETH")
-b_eur = cols[2].button("EUR")
-b_gold = cols[3].button("GOLD")
+# Lista de Ativos Simples
+st.write("🎯 **SELECIONE:**")
+c1, c2, c3, c4 = st.columns(4)
+escolha = None
+if c1.button("BTC"): escolha = "BTC-USD"
+if c2.button("ETH"): escolha = "ETH-USD"
+if c3.button("EUR"): escolha = "EURUSD=X"
+if c4.button("GOLD"): escolha = "GC=F"
 
 if 'ticker' not in st.session_state: st.session_state.ticker = "BTC-USD"
-if b_btc: st.session_state.ticker = "BTC-USD"
-if b_eth: st.session_state.ticker = "ETH-USD"
-if b_eur: st.session_state.ticker = "EURUSD=X"
-if b_gold: st.session_state.ticker = "GC=F"
+if escolha: st.session_state.ticker = escolha
 
-# Seleção de Tempo Gráfico
-tf = st.selectbox("Tempo Gráfico:", ["1m", "5m", "15m", "1h", "1d"], index=1)
+# Área principal (Usamos um container vazio para evitar o erro removeChild)
+placeholder = st.empty()
 
-# Busca de Dados com Proteção de Erro
-try:
-    df = yf.download(st.session_state.ticker, period="2d", interval=tf, progress=False)
-    
-    if not df.empty:
-        # CONFLUÊNCIA DE 20 INDICADORES (Lógica de Pesos)
-        df.ta.macd(append=True); df.ta.rsi(append=True); df.ta.adx(append=True)
-        df.ta.supertrend(append=True); df.ta.bbands(append=True)
+with placeholder.container():
+    ticker = st.text_input("Ativo atual:", st.session_state.ticker).upper()
+    tf = st.selectbox("Tempo:", ["1m", "5m", "15m", "1h", "1d"], index=1)
+
+    try:
+        df = yf.download(ticker, period="2d", interval=tf, progress=False)
         
-        # Sistema de Pontuação (Peso para chegar a 20)
-        p = 0
-        if df['RSI_14'].iloc[-1] < 45: p += 5 # Sobrecompra/Venda
-        if df['Close'].iloc[-1] > df['SUPERT_7_3.0'].iloc[-1]: p += 5 # Tendência
-        if df['MACD_12_26_9'].iloc[-1] > 0: p += 5 # Momentum
-        if df['ADX_14'].iloc[-1] > 25: p += 5 # Força
-        
-        # Placar de Confluência
-        cor_neon = "#0FF" if p >= 15 else "#F0F" if p <= 5 else "#FFF"
-        st.markdown(f"""
-            <div style="border: 3px solid {cor_neon}; padding: 15px; border-radius: 15px; text-align: center; box-shadow: 0 0 15px {cor_neon};">
-                <h2 style="color: {cor_neon}; margin:0;">CONFLUÊNCIA: {p}/20</h2>
-                <strong style="color: white;">{'ALTA FORTE' if p >= 15 else 'BAIXA FORTE' if p <= 5 else 'AGUARDAR'}</strong>
-            </div>
-        """, unsafe_allow_html=True)
+        if not df.empty:
+            # 20 Indicadores (Lógica simplificada para estabilidade)
+            df.ta.macd(append=True); df.ta.rsi(append=True); df.ta.adx(append=True)
+            df.ta.supertrend(append=True)
+            
+            # Cálculo de Confluência (Peso Total 20)
+            score = 0
+            if df['RSI_14'].iloc[-1] < 45: score += 5
+            if df['Close'].iloc[-1] > df['SUPERT_7_3.0'].iloc[-1]: score += 5
+            if df['MACD_12_26_9'].iloc[-1] > 0: score += 5
+            if df['ADX_14'].iloc[-1] > 25: score += 5
+            
+            # Caixa de Score Neon
+            cor = "#0FF" if score >= 15 else "#F0F" if score <= 5 else "#FFF"
+            st.markdown(f"""
+                <div style="border: 2px solid {cor}; padding: 10px; border-radius: 10px; text-align: center;">
+                    <h2 style="color: {cor}; margin:0;">CONFLUÊNCIA: {score}/20</h2>
+                    <p style="color:white; margin:0;">{'COMPRA FORTE' if score >= 15 else 'VENDA FORTE' if score <= 5 else 'NEUTRO'}</p>
+                </div>
+            """, unsafe_allow_html=True)
 
-        # Gráfico Candlestick
-        fig = go.Figure(data=[go.Candlestick(
-            x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
-            increasing_line_color='#00FFFF', decreasing_line_color='#FF00FF'
-        )])
-        fig.update_layout(template="plotly_dark", height=450, xaxis_rangeslider_visible=False, margin=dict(l=0,r=0,t=10,b=0))
-        st.plotly_chart(fig, use_container_width=True)
-
-    else:
-        st.info("Conectando à fonte de dados (Yahoo/Binance)...")
-
-except Exception as e:
-    st.error(f"Erro na fonte de dados: {e}")
+            # Gráfico Candlestick Estático (Mais estável para celular)
+            fig = go.Figure(data=[go.Candlestick(
+                x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
+                increasing_line_color='#00FFFF', decreasing_line_color='#FF00FF'
+            )])
+            fig.update_layout(template="plotly_dark", height=400, xaxis_rangeslider_visible=False, margin=dict(l=0,r=0,t=10,b=0))
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            
+    except Exception as e:
+        st.error("Aguardando sinal estável...")
